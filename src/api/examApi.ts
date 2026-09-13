@@ -28,11 +28,31 @@ export const examApi = {
   },
 
   /**
-   * 답안 제출 및 채점 API
+   * 1. 비동기 답안 제출 접수 API (jobId 반환)
    * POST /api/exams/submit
    */
-  submitExam: async (request: ExamSubmitRequest): Promise<ExamSubmitResponse> => {
-    const response = await apiClient.post<ExamSubmitResponse>('/api/exams/submit', request);
+  submitExamAsync: async (request: ExamSubmitRequest): Promise<{ jobId: string }> => {
+    const response = await apiClient.post<{ jobId: string }>('/api/exams/submit', request);
+    return response.data;
+  },
+
+  /**
+   * 2. 채점 진행 상태 조회 API
+   * GET /api/exams/submit/status/{jobId}
+   */
+  getSubmitStatus: async (jobId: string): Promise<{ status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'NOT_FOUND' }> => {
+    const response = await apiClient.get<{ status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'NOT_FOUND' }>(
+      `/api/exams/submit/status/${jobId}`
+    );
+    return response.data;
+  },
+
+  /**
+   * 3. 최종 채점 결과 조회 API
+   * GET /api/exams/submit/result/{jobId}
+   */
+  getSubmitResult: async (jobId: string): Promise<ExamSubmitResponse> => {
+    const response = await apiClient.get<ExamSubmitResponse>(`/api/exams/submit/result/${jobId}`);
     return response.data;
   },
 

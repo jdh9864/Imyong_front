@@ -6,9 +6,9 @@ export type GenerationType = 'CHAPTER' | 'MOCK_EXAM';
 // 1. 문제 생성 요청 DTO
 export interface ExamGenerateRequest {
   generationType: GenerationType;
-  domainId: string;
-  domainName: string; // 단원명 (예: 분자생물학)
-  problemCount: number;
+  domainId?: string;
+  domainName?: string; // 단원명 (예: 분자생물학)
+  problemCount?: number;
 }
 
 // 문제 생성 응답 내 문제 항목
@@ -47,7 +47,7 @@ export interface SubmitResult {
   problemNumber: number;
   score: number;
   isCorrect: boolean;
-  aiFeedback: Record<string, unknown>; // Java Map<String, Object> 매핑
+  aiFeedback: string; // Java Map<String, Object> 매핑
   missingKeywords: string[];
 }
 

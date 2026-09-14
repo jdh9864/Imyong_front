@@ -1,5 +1,5 @@
 // src/pages/ExamPage.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState,  useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { examApi } from '../api/examApi';
 import type { 

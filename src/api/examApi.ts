@@ -6,11 +6,13 @@ import type {
   ExamSubmitRequest,
   ExamSubmitResponse,
   ProblemReviewResponse,
+  ReviewProblem,
 } from '../types/exam';
 
-// 1. Axios 기본 인스턴스 설정
+// 1. Axios 기본 인스턴스 설정 (비동기 처리 대기를 위해 60초 타임아웃 적용)
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
+  timeout: 60000, 
   headers: {
     'Content-Type': 'application/json',
   },
@@ -64,6 +66,14 @@ export const examApi = {
   getReviewProblems: async (domainId?: string): Promise<ProblemReviewResponse> => {
     const response = await apiClient.get<ProblemReviewResponse>('/api/problems/review', {
       params: domainId ? { domainId } : undefined, // domainId가 있으면 쿼리 파라미터로 추가
+    });
+    return response.data;
+  },
+
+  gradeSingleProblem: async (problemId: string, userAnswer: string): Promise<ReviewProblem> => {
+    const response = await apiClient.post<ReviewProblem>('/api/problems/review/grade', {
+      problemId,
+      userAnswer,
     });
     return response.data;
   },

@@ -1,6 +1,6 @@
 // src/pages/ExamPage.tsx
-// src/pages/ExamPage.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { examApi } from '../api/examApi';
 import type { 
   ExamGenerateRequest, 
@@ -59,34 +59,80 @@ export const DOMAIN_LIST: DomainItem[] = [
   { domainId: '6a7188a99e7407e1a69315ff', majorCategory: '6권. 식물학, 생리학', domainName: '3. 생태학' },
 ];
 
-// 사이드바, 메인 영역, 텍스트에어리어에 공통 적용할 커스텀 스크롤바 CSS 클래스
 const customScrollbar = "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-400/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/40";
 
 export default function ExamPage() {
+  const navigate = useNavigate();
+
   const [step, setStep] = useState<'SOLVING' | 'RESULT'>('SOLVING');
   const [generationType, setGenerationType] = useState<'CHAPTER' | 'MOCK_EXAM'>('CHAPTER');
-  
+
   const [selectedDomainId, setSelectedDomainId] = useState<string>('');
   const [selectedDomainName, setSelectedDomainName] = useState<string>('');
-  
-  // 단원별 풀기 출제 문항 수 상태 (기본 5개)
+
   const [problemCount, setProblemCount] = useState<number>(5);
 
   const [examData, setExamData] = useState<ExamGenerateResponse | null>(null);
   const [resultData, setResultData] = useState<ExamSubmitResponse | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
-  
+
   const [currentPage, setCurrentPage] = useState<number>(0);
   const problemsPerPage = 2;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    return () => {};
-  }, []);
+  // 터치 이벤트 좌표 추적
+  const touchStartXRef = useRef<number | null>(null);
 
   const categories = Array.from(new Set(DOMAIN_LIST.map((item) => item.majorCategory)));
+
+  const pagesArray = [];
+  if (examData) {
+    for (let i = 0; i < examData.problems.length; i += problemsPerPage) {
+      pagesArray.push(examData.problems.slice(i, i + problemsPerPage));
+    }
+  }
+
+  const totalPages = pagesArray.length;
+
+  // 터치 이벤트 핸들러 (TEXTAREA 입력 시 조작 제외)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA' || target.closest('textarea')) {
+      touchStartXRef.current = null;
+      return;
+    }
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || isLoading) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const diffX = touchStartXRef.current - touchEndX;
+    const minSwipeDistance = 50; // 스와이프 임계치 (px)
+
+    if (diffX > minSwipeDistance) {
+      // 왼쪽 스와이프 (다음 방향)
+      if (!examData) {
+        // 출제 전 빈 화면에서 스와이프 시 리뷰 페이지로 이동
+        navigate('/review');
+      } else if (currentPage < totalPages - 1) {
+        setCurrentPage((prev) => prev + 1);
+      } else if (currentPage === totalPages - 1) {
+        // 마지막 문제 페이지에서 스와이프 시 리뷰 페이지로 이동
+        navigate('/review');
+      }
+    } else if (diffX < -minSwipeDistance) {
+      // 오른쪽 스와이프 (이전 방향)
+      if (currentPage > 0) {
+        setCurrentPage((prev) => prev - 1);
+      }
+    }
+
+    touchStartXRef.current = null;
+  };
 
   const handleGenerate = async () => {
     if (generationType === 'CHAPTER' && !selectedDomainId) {
@@ -100,7 +146,7 @@ export default function ExamPage() {
         generationType,
         domainId: generationType === 'CHAPTER' ? selectedDomainId : undefined,
         domainName: generationType === 'CHAPTER' ? selectedDomainName : undefined,
-        problemCount: generationType === 'CHAPTER' ? problemCount : undefined, // 동적 문항 수 연동
+        problemCount: generationType === 'CHAPTER' ? problemCount : undefined,
       };
 
       const res = await examApi.generateExam(payload);
@@ -145,7 +191,7 @@ export default function ExamPage() {
           if (statusRes.status === 'COMPLETED') {
             clearInterval(pollInterval);
             const finalResult = await examApi.getSubmitResult(jobId);
-            
+
             setResultData(finalResult);
             setStep('RESULT');
             setCurrentPage(0);
@@ -169,11 +215,6 @@ export default function ExamPage() {
       setIsLoading(false);
     }
   };
-
-  const totalPages = examData ? Math.ceil(examData.problems.length / problemsPerPage) : 0;
-  const currentProblems = examData 
-    ? examData.problems.slice(currentPage * problemsPerPage, (currentPage + 1) * problemsPerPage) 
-    : [];
 
   return (
     <div className="flex h-screen bg-[#F2F8FF]">
@@ -241,7 +282,6 @@ export default function ExamPage() {
                 </div>
               ))}
 
-              {/* 출제 문항 수 선택 드롭다운 */}
               <div className="pt-4 mt-4 border-t border-slate-200/60">
                 <h3 className="font-bold text-sm text-slate-800 mb-2">출제 문항 수</h3>
                 <select
@@ -258,7 +298,6 @@ export default function ExamPage() {
           )}
         </div>
 
-        {/* 출제 버튼 영역 */}
         {(generationType === 'MOCK_EXAM' || selectedDomainId !== '') && (
           <div className="pt-4 mt-6 border-t border-slate-200/60 flex-shrink-0">
             <button
@@ -272,17 +311,21 @@ export default function ExamPage() {
         )}
       </aside>
 
-      {/* 우측 메인 영역 (커스텀 스크롤바 적용) */}
-      <main className={`flex-1 p-8 overflow-y-auto relative flex flex-col ${customScrollbar}`}>
+      {/* 우측 메인 영역: touch-pan-y 속성을 추가하여 브라우저의 뒤로가기 제스처 무효화 */}
+      <main 
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 p-8 flex flex-col relative overflow-hidden select-none touch-pan-y"
+      >
         {!examData ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-500 font-medium">
             <p>좌측 패널에서 출제 설정을 완료한 후 출제 버튼을 눌러주십시오.</p>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col overflow-hidden">
             
             {step === 'RESULT' && resultData && (
-              <div className="mb-6 px-6 py-4 bg-white border border-blue-200 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="mb-6 px-6 py-4 bg-white border border-blue-200 rounded-xl flex items-center justify-between shadow-sm flex-shrink-0">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">채점 완료</h2>
                   <p className="text-sm text-slate-500 mt-1">작성된 답안에 대한 AI 피드백이 하단에 생성되었습니다.</p>
@@ -296,88 +339,105 @@ export default function ExamPage() {
             )}
 
             {isLoading && step === 'SOLVING' && (
-              <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
+              <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
                 <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
                 <p className="text-lg font-bold text-slate-800">AI 채점 진행 중...</p>
                 <p className="text-sm text-slate-500 mt-2">시간이 다소 소요될 수 있습니다. (최대 5분)</p>
               </div>
             )}
 
-            <div className="flex-1 grid grid-cols-2 gap-8 relative z-0">
-              {currentProblems.map((problem, index) => {
-                const actualProblemNumber = currentPage * problemsPerPage + index + 1;
-                const resultInfo = step === 'RESULT' && resultData?.results 
-                  ? resultData.results.find(r => r.problemId === problem.problemId) 
-                  : null;
+            {/* Transform 기반 슬라이더 트랙 */}
+            <div className="flex-1 overflow-hidden relative">
+              <div 
+                className="w-full h-full flex transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${currentPage * 100}%)` }}
+              >
+                {pagesArray.map((pageProblems, pageIndex) => (
+                  <div 
+                    key={pageIndex} 
+                    className="w-full h-full flex-shrink-0 px-2 flex flex-col"
+                  >
+                    <div className={`flex-1 overflow-y-auto ${customScrollbar}`}>
+                      <div className="grid grid-cols-2 gap-8 h-full">
+                        {pageProblems.map((problem, idx) => {
+                          const actualProblemNumber = pageIndex * problemsPerPage + idx + 1;
+                          const resultInfo = step === 'RESULT' && resultData?.results 
+                            ? resultData.results.find(r => r.problemId === problem.problemId) 
+                            : null;
 
-                return (
-                  <div key={problem.problemId} className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 flex flex-col">
-                    
-                    <div className="mb-6 flex justify-between items-center">
-                      <h3 className="text-xl font-bold text-slate-800 tracking-tight">{actualProblemNumber}번 문제</h3>
-                      {step === 'RESULT' && resultInfo && (
-                        <span className={`px-4 py-1.5 rounded-full text-sm font-bold tracking-wide ${
-                          resultInfo.isCorrect 
-                            ? 'bg-green-50 text-green-700 border border-green-200' 
-                            : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}>
-                          {resultInfo.isCorrect ? '정답' : '오답'} ({resultInfo.score ?? 0}점)
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed flex-1">
-                      {problem.content || problem.title}
-                    </div>
+                          return (
+                            <div key={problem.problemId} className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 flex flex-col h-fit">
+                              
+                              <div className="mb-6 flex justify-between items-center">
+                                <h3 className="text-xl font-bold text-slate-800 tracking-tight">{actualProblemNumber}번 문제</h3>
+                                {step === 'RESULT' && resultInfo && (
+                                  <span className={`px-4 py-1.5 rounded-full text-sm font-bold tracking-wide ${
+                                    resultInfo.isCorrect 
+                                      ? 'bg-green-50 text-green-700 border border-green-200' 
+                                      : 'bg-red-50 text-red-700 border border-red-200'
+                                  }`}>
+                                    {resultInfo.isCorrect ? '정답' : '오답'} ({resultInfo.score ?? 0}점)
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed flex-1 select-text">
+                                {problem.content || problem.title}
+                              </div>
 
-                    {/* 내 답안 텍스트에어리어 (커스텀 스크롤바 적용) */}
-                    <div className="mt-8 border-t border-slate-100 pt-6">
-                      <label className="block text-base font-bold text-slate-800 mb-3">내 답안</label>
-                      <textarea
-                        value={userAnswers[problem.problemId] || ''}
-                        onChange={(e) => handleAnswerChange(problem.problemId, e.target.value)}
-                        disabled={step === 'RESULT' || isLoading}
-                        className={`w-full h-32 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm transition-all shadow-inner ${customScrollbar} ${
-                          step === 'RESULT' || isLoading
-                            ? 'bg-slate-50 border-slate-200 text-slate-600 opacity-90 cursor-not-allowed' 
-                            : 'bg-[#F8FAFC] border-slate-200 focus:bg-white text-slate-800'
-                        }`}
-                        placeholder="답안을 서술하십시오."
-                      />
-                    </div>
+                              <div className="mt-8 border-t border-slate-100 pt-6 select-text">
+                                <label className="block text-base font-bold text-slate-800 mb-3">내 답안</label>
+                                <textarea
+                                  value={userAnswers[problem.problemId] || ''}
+                                  onChange={(e) => handleAnswerChange(problem.problemId, e.target.value)}
+                                  disabled={step === 'RESULT' || isLoading}
+                                  className={`w-full h-32 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm transition-all shadow-inner ${customScrollbar} ${
+                                    step === 'RESULT' || isLoading
+                                      ? 'bg-slate-50 border-slate-200 text-slate-600 opacity-90 cursor-not-allowed' 
+                                      : 'bg-[#F8FAFC] border-slate-200 focus:bg-white text-slate-800'
+                                  }`}
+                                  placeholder="답안을 서술하십시오."
+                                />
+                              </div>
 
-                    {step === 'RESULT' && resultInfo && resultInfo.aiFeedback && (
-                      <div className="mt-4 p-5 bg-blue-50/50 border border-blue-100 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                          <label className="text-sm font-bold text-blue-900">AI 피드백</label>
-                        </div>
-                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                          {typeof resultInfo.aiFeedback === 'string' 
-                            ? resultInfo.aiFeedback 
-                            : JSON.stringify(resultInfo.aiFeedback, null, 2)}
-                        </p>
+                              {step === 'RESULT' && resultInfo && resultInfo.aiFeedback && (
+                                <div className="mt-4 p-5 bg-blue-50/50 border border-blue-100 rounded-lg select-text">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <label className="text-sm font-bold text-blue-900">AI 피드백</label>
+                                  </div>
+                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    {typeof resultInfo.aiFeedback === 'string' 
+                                      ? resultInfo.aiFeedback 
+                                      : JSON.stringify(resultInfo.aiFeedback, null, 2)}
+                                  </p>
+                                </div>
+                              )}
+
+                            </div>
+                          );
+                        })}
                       </div>
-                    )}
-
+                    </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
 
-            <div className="mt-8 pt-4 flex items-center justify-center relative">
+            {/* 하단 페이지네이션 컨트롤: 화살표 버튼은 오직 currentPage 상태 변경만 수행 */}
+            <div className="mt-4 pt-4 flex items-center justify-center relative flex-shrink-0">
               <div className="flex gap-6">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
                   disabled={currentPage === 0 || isLoading}
-                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md"
+                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md cursor-pointer"
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
                   disabled={currentPage >= totalPages - 1 || isLoading}
-                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md"
+                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md cursor-pointer"
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                 </button>

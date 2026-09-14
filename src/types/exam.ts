@@ -47,7 +47,7 @@ export interface SubmitResult {
   problemNumber: number;
   score: number;
   isCorrect: boolean;
-  aiFeedback: string; // Java Map<String, Object> 매핑
+  aiFeedback: string; 
   missingKeywords: string[];
 }
 
@@ -72,7 +72,8 @@ export interface ReviewProblem {
   referenceAnswer: string;
   userAnswer: string;
   isCorrect: boolean;
-  aiFeedback: Record<string, unknown>;
+  // Java 엔티티에서 Object로 선언(String 또는 Map 할당)되었으므로 유니온 타입 적용
+  aiFeedback: string | Record<string, unknown>; 
 }
 
 // 5. 문제 복습/오답노트 응답 DTO

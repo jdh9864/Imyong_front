@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+// src/pages/ReviewPage.tsx
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { examApi } from '../api/examApi';
-import type { 
-  ExamGenerateRequest, 
-  ExamGenerateResponse, 
-  ExamSubmitRequest, 
-  ExamSubmitResponse 
-} from '../types/exam';
+
+// ==========================================
+// 1. 타입 정의 (요청하신 DTO에 맞춰 최적화)
+// ==========================================
+export type GenerationType = 'CHAPTER' | 'ALL_PROBLEMS';
 
 export interface DomainItem {
   domainId: string;
@@ -13,8 +14,27 @@ export interface DomainItem {
   domainName: string; 
 }
 
+export interface ReviewProblem {
+  problemId: string;
+  domainId: string;
+  problemNumber: number;
+  questionType: string;
+  title: string;
+  content: string;
+  referenceAnswer: string;
+  userAnswer: string;
+  isCorrect: boolean;
+  aiFeedback: string | Record<string, unknown>; 
+}
+
+export interface ProblemReviewResponse {
+  requestedDomainId: string;
+  isFallbackToAll: boolean;
+  problems: ReviewProblem[];
+}
+
 export const DOMAIN_LIST: DomainItem[] = [
-  // 1권. 세포학, 생화학 (8개)
+  // 1권. 세포학, 생화학
   { domainId: '6a7188a99e7407e1a69315e2', majorCategory: '1권. 세포학, 생화학', domainName: '1. 세포의 구성 물질' },
   { domainId: '6a7188a99e7407e1a69315e3', majorCategory: '1권. 세포학, 생화학', domainName: '2. 효소' },
   { domainId: '6a7188a99e7407e1a69315e4', majorCategory: '1권. 세포학, 생화학', domainName: '3. 세포의 구조와 기능' },
@@ -24,20 +44,20 @@ export const DOMAIN_LIST: DomainItem[] = [
   { domainId: '6a7188a99e7407e1a69315e8', majorCategory: '1권. 세포학, 생화학', domainName: '7. 그 밖의 물질 대사' },
   { domainId: '6a7188a99e7407e1a69315e9', majorCategory: '1권. 세포학, 생화학', domainName: '8. 세포의 수송 기작' },
 
-  // 2권. 분자생물학 (5개)
+  // 2권. 분자생물학
   { domainId: '6a7188a99e7407e1a69315ea', majorCategory: '2권. 분자생물학', domainName: '1. 핵산의 물리화학적 특성' },
   { domainId: '6a7188a99e7407e1a69315eb', majorCategory: '2권. 분자생물학', domainName: '2. DNA 복제와 유전자 발현' },
   { domainId: '6a7188a99e7407e1a69315ec', majorCategory: '2권. 분자생물학', domainName: '3. 유전자 발현 조절' },
   { domainId: '6a7188a99e7407e1a69315ed', majorCategory: '2권. 분자생물학', domainName: '4. 돌연변이와 수복 기작' },
   { domainId: '6a7188a99e7407e1a69315ee', majorCategory: '2권. 분자생물학', domainName: '5. 분자생물학 실험 방법' },
 
-  // 3권. 유전학, 분류학, 미생물학 (4개)
+  // 3권. 유전학, 분류학, 미생물학
   { domainId: '6a7188a99e7407e1a69315ef', majorCategory: '3권. 유전학, 분류학, 미생물학', domainName: '1. 전달 유전학' },
   { domainId: '6a7188a99e7407e1a69315f0', majorCategory: '3권. 유전학, 분류학, 미생물학', domainName: '2. 집단 유전학 및 진화학' },
   { domainId: '6a7188a99e7407e1a69315f1', majorCategory: '3권. 유전학, 분류학, 미생물학', domainName: '3. 분류학' },
   { domainId: '6a7188a99e7407e1a69315f2', majorCategory: '3권. 유전학, 분류학, 미생물학', domainName: '4. 미생물학' },
 
-  // 4권. 동물생리학 (7개)
+  // 4권. 동물생리학
   { domainId: '6a7188a99e7407e1a69315f3', majorCategory: '4권. 동물생리학', domainName: '1. 신호 전달과 내분비계' },
   { domainId: '6a7188a99e7407e1a69315f4', majorCategory: '4권. 동물생리학', domainName: '2. 신경 세포와 신경계' },
   { domainId: '6a7188a99e7407e1a69315f5', majorCategory: '4권. 동물생리학', domainName: '3. 감각계와 근육 생리학' },
@@ -46,139 +66,154 @@ export const DOMAIN_LIST: DomainItem[] = [
   { domainId: '6a7188a99e7407e1a69315f8', majorCategory: '4권. 동물생리학', domainName: '6. 소화계' },
   { domainId: '6a7188a99e7407e1a69315f9', majorCategory: '4권. 동물생리학', domainName: '7. 배설계' },
 
-  // 5권. 면역학, 발생학 (3개)
+  // 5권. 면역학, 발생학
   { domainId: '6a7188a99e7407e1a69315fa', majorCategory: '5권. 면역학, 발생학', domainName: '1. 면역학' },
   { domainId: '6a7188a99e7407e1a69315fb', majorCategory: '5권. 면역학, 발생학', domainName: '2. 세포 분열 및 암' },
   { domainId: '6a7188a99e7407e1a69315fc', majorCategory: '5권. 면역학, 발생학', domainName: '3. 생식과 발생' },
 
-  // 6권. 식물학, 생리학 (3개)
+  // 6권. 식물학, 생리학
   { domainId: '6a7188a99e7407e1a69315fd', majorCategory: '6권. 식물학, 생리학', domainName: '1. 식물의 생식과 발달' },
   { domainId: '6a7188a99e7407e1a69315fe', majorCategory: '6권. 식물학, 생리학', domainName: '2. 식물 생리학' },
   { domainId: '6a7188a99e7407e1a69315ff', majorCategory: '6권. 식물학, 생리학', domainName: '3. 생태학' },
 ];
 
-export default function ReviewPage() {
-  const [step, setStep] = useState<'SOLVING' | 'RESULT'>('SOLVING');
-  const [generationType, setGenerationType] = useState<'CHAPTER' | 'MOCK_EXAM'>('CHAPTER');
-  
-  const [selectedDomainId, setSelectedDomainId] = useState<string>('');
-  const [selectedDomainName, setSelectedDomainName] = useState<string>('');
+const customScrollbar = "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-400/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/40";
 
-  const [examData, setExamData] = useState<ExamGenerateResponse | null>(null);
-  const [resultData, setResultData] = useState<ExamSubmitResponse | null>(null);
-  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
+export default function ReviewPage() {
+  const navigate = useNavigate();
+
+  const [generationType, setGenerationType] = useState<GenerationType>('CHAPTER');
+  const [selectedDomainId, setSelectedDomainId] = useState<string>('');
+
+  const [reviewData, setReviewData] = useState<ProblemReviewResponse | null>(null);
   
+  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
+  const [showResultForProblem, setShowResultForProblem] = useState<Record<string, boolean>>({});
+  const [gradingLoading, setGradingLoading] = useState<Record<string, boolean>>({}); // 개별 채점 로딩 상태
+
   const [currentPage, setCurrentPage] = useState<number>(0);
   const problemsPerPage = 2;
+  const [isFetching, setIsFetching] = useState(false);
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // 컴포넌트 언마운트 시 인터벌 정리
-  useEffect(() => {
-    return () => {
-      // 필요한 경우 인터벌 클린업 용도
-    };
-  }, []);
-
+  const touchStartXRef = useRef<number | null>(null);
   const categories = Array.from(new Set(DOMAIN_LIST.map((item) => item.majorCategory)));
 
-  const handleGenerate = async () => {
+  const pagesArray = [];
+  if (reviewData) {
+    for (let i = 0; i < reviewData.problems.length; i += problemsPerPage) {
+      pagesArray.push(reviewData.problems.slice(i, i + problemsPerPage));
+    }
+  }
+  const totalPages = pagesArray.length;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA' || target.closest('textarea')) {
+      touchStartXRef.current = null;
+      return;
+    }
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const diffX = touchStartXRef.current - touchEndX;
+    const minSwipeDistance = 50; 
+
+    if (diffX > minSwipeDistance) {
+      if (currentPage > 0) {
+        setCurrentPage((prev) => prev - 1);
+      }
+    } else if (diffX < -minSwipeDistance) {
+      if (!reviewData) {
+        navigate('/');
+      } else if (currentPage < totalPages - 1) {
+        setCurrentPage((prev) => prev + 1);
+      } else if (currentPage === totalPages - 1) {
+        navigate('/');
+      }
+    }
+    touchStartXRef.current = null;
+  };
+
+  const handleFetchProblems = async () => {
     if (generationType === 'CHAPTER' && !selectedDomainId) {
-      alert('출제할 단원을 선택해 주십시오.');
+      alert('조회할 단원을 선택해 주십시오.');
       return;
     }
 
-    setIsGenerating(true);
+    setIsFetching(true);
     try {
-      const payload: ExamGenerateRequest = {
-        generationType,
-        domainId: generationType === 'CHAPTER' ? selectedDomainId : undefined,
-        domainName: generationType === 'CHAPTER' ? selectedDomainName : undefined,
-        problemCount: 5,
-      };
-
-      const res = await examApi.generateExam(payload);
-      setExamData(res);
-      setUserAnswers({});
+      const res: ProblemReviewResponse = await examApi.getReviewProblems(
+        generationType === 'CHAPTER' ? selectedDomainId : undefined
+      );
+      
+      setReviewData(res);
       setCurrentPage(0);
-      setStep('SOLVING');
+      setShowResultForProblem({});
+      
+      const initialAnswers: Record<string, string> = {};
+      res.problems.forEach(p => {
+        initialAnswers[p.problemId] = p.userAnswer || '';
+      });
+      setUserAnswers(initialAnswers);
+      
     } catch (error) {
-      console.error('시험 생성 실패:', error);
-      alert('시험지 생성에 실패했습니다. 서버 연결 상태를 확인해주세요.');
+      console.error('오답노트 조회 실패:', error);
+      alert('문제 조회에 실패했습니다. 서버 연결 상태를 확인해주세요.');
     } finally {
-      setIsGenerating(false);
+      setIsFetching(false);
     }
   };
 
   const handleAnswerChange = (problemId: string, value: string) => {
-    setUserAnswers((prev) => ({
-      ...prev,
-      [problemId]: value,
-    }));
+    setUserAnswers((prev) => ({ ...prev, [problemId]: value }));
   };
 
-  // 백엔드 폴링(Polling) 로직 통합
-  const handleSubmit = async () => {
-    if (!examData) return;
-    setIsLoading(true);
+  // ==========================================
+  // 단일 문제 AI 재채점 API 연동 핸들러
+  // ==========================================
+  const handleGradeProblem = async (problemId: string) => {
+    const answer = userAnswers[problemId] || '';
+    if (!answer.trim()) {
+      alert('작성된 답안이 없습니다.');
+      return;
+    }
 
+    setGradingLoading((prev) => ({ ...prev, [problemId]: true }));
     try {
-      const payload: ExamSubmitRequest = {
-        examId: examData.examId,
-        answers: Object.entries(userAnswers).map(([problemId, userAnswer]) => ({
-          problemId,
-          userAnswer,
-        })),
-      };
+      // 서버로 재채점 요청 전송
+      const updatedProblem = await examApi.gradeSingleProblem(problemId, answer);
 
-      // 1. 제출 접수 및 jobId 수신
-      const { jobId } = await examApi.submitExamAsync(payload);
+      // reviewData 내부의 해당 문제 데이터를 서버 응답으로 갱신
+      setReviewData((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          problems: prev.problems.map((p) => 
+            p.problemId === problemId ? updatedProblem : p
+          ),
+        };
+      });
 
-      // 2. 3초마다 상태 폴링 인터벌 실행
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusRes = await examApi.getSubmitStatus(jobId);
-
-          if (statusRes.status === 'COMPLETED') {
-            clearInterval(pollInterval);
-            const finalResult = await examApi.getSubmitResult(jobId);
-            
-            setResultData(finalResult);
-            setStep('RESULT');
-            setCurrentPage(0);
-            setIsLoading(false);
-          } else if (statusRes.status === 'FAILED') {
-            clearInterval(pollInterval);
-            alert('AI 채점 처리 중 오류가 발생했습니다.');
-            setIsLoading(false);
-          }
-        } catch (pollError) {
-          console.error('상태 조회 실패:', pollError);
-          clearInterval(pollInterval);
-          alert('채점 상태를 확인하는 중 네트워크 오류가 발생했습니다.');
-          setIsLoading(false);
-        }
-      }, 3000);
-
+      // 채점 완료 상태 패널 열기
+      setShowResultForProblem((prev) => ({ ...prev, [problemId]: true }));
     } catch (error) {
-      console.error('채점 접수 요청 실패:', error);
-      alert('채점 요청 접수 중 오류가 발생했습니다.');
-      setIsLoading(false);
+      console.error('단일 문제 재채점 실패:', error);
+      alert('AI 재채점 처리 중 오류가 발생했습니다.');
+    } finally {
+      setGradingLoading((prev) => ({ ...prev, [problemId]: false }));
     }
   };
-
-  const totalPages = examData ? Math.ceil(examData.problems.length / problemsPerPage) : 0;
-  const currentProblems = examData 
-    ? examData.problems.slice(currentPage * problemsPerPage, (currentPage + 1) * problemsPerPage) 
-    : [];
 
   return (
     <div className="flex h-screen bg-[#F2F8FF]">
       {/* 좌측 사이드바 영역 */}
-      <aside className="w-72 bg-white/10 shadow-sm border-r border-slate-200/50 p-6 backdrop-blur-sm overflow-y-auto flex flex-col justify-between [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-400/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/40">
+      <aside className={`w-72 bg-white/10 shadow-sm border-r border-slate-200/50 p-6 backdrop-blur-sm overflow-y-auto flex flex-col justify-between ${customScrollbar}`}>
         <div>
-          <h2 className="font-bold text-lg mb-4 text-slate-800">출제 유형</h2>
+          <h2 className="font-bold text-lg mb-4 text-slate-800">조회 유형</h2>
 
           <div className="space-y-2 mb-6">
             <label className="flex items-center gap-2.5 cursor-pointer text-sm font-semibold text-slate-700 hover:text-slate-900">
@@ -190,28 +225,27 @@ export default function ReviewPage() {
                 onChange={() => setGenerationType('CHAPTER')}
                 className="accent-blue-600 h-4 w-4 cursor-pointer"
               />
-              <span>단원별 풀기</span>
+              <span>단원별 조회</span>
             </label>
             <label className="flex items-center gap-2.5 cursor-pointer text-sm font-semibold text-slate-700 hover:text-slate-900">
               <input
                 type="radio"
                 name="generationType"
-                value="MOCK_EXAM"
-                checked={generationType === 'MOCK_EXAM'}
+                value="ALL_PROBLEMS"
+                checked={generationType === 'ALL_PROBLEMS'}
                 onChange={() => {
-                  setGenerationType('MOCK_EXAM');
+                  setGenerationType('ALL_PROBLEMS');
                   setSelectedDomainId('');
-                  setSelectedDomainName('');
                 }}
                 className="accent-blue-600 h-4 w-4 cursor-pointer"
               />
-              <span>실전 모의고사</span>
+              <span>전체 문제 조회</span>
             </label>
           </div>
 
           {generationType === 'CHAPTER' && (
             <div className="space-y-4 pt-4 border-t border-slate-200/60">
-              <h3 className="font-bold text-sm text-slate-800 mb-2">출제 범위 선택</h3>
+              <h3 className="font-bold text-sm text-slate-800 mb-2">조회 범위 선택</h3>
               {categories.map((category) => (
                 <div key={category}>
                   <h4 className="text-xs font-semibold text-slate-500 mb-2">{category}</h4>
@@ -226,10 +260,7 @@ export default function ReviewPage() {
                           name="domainSelect"
                           value={item.domainId}
                           checked={selectedDomainId === item.domainId}
-                          onChange={() => {
-                            setSelectedDomainId(item.domainId);
-                            setSelectedDomainName(item.domainName);
-                          }}
+                          onChange={() => setSelectedDomainId(item.domainId)}
                           className="accent-blue-600 h-3.5 w-3.5 cursor-pointer"
                         />
                         <span className="truncate">{item.domainName}</span>
@@ -242,143 +273,157 @@ export default function ReviewPage() {
           )}
         </div>
 
-        {/* 출제 버튼 영역 */}
-        {(generationType === 'MOCK_EXAM' || selectedDomainId !== '') && (
-          <div className="pt-4 mt-6 border-t border-slate-200/60">
+        {(generationType === 'ALL_PROBLEMS' || selectedDomainId !== '') && (
+          <div className="pt-4 mt-6 border-t border-slate-200/60 flex-shrink-0">
             <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
+              onClick={handleFetchProblems}
+              disabled={isFetching}
               className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-bold cursor-pointer hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {isGenerating ? '출제 중...' : '새로운 문제 출제'}
+              {isFetching ? '조회 중...' : '문제 조회'}
             </button>
           </div>
         )}
       </aside>
 
       {/* 우측 메인 영역 */}
-      <main className="flex-1 p-8 overflow-y-auto relative flex flex-col">
-        {!examData ? (
+      <main 
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 p-8 flex flex-col relative overflow-hidden select-none touch-pan-y"
+      >
+        {!reviewData ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-500 font-medium">
-            <p>좌측 패널에서 출제 설정을 완료한 후 출제 버튼을 눌러주십시오.</p>
+            <p>좌측 패널에서 설정을 완료한 후 [문제 조회] 버튼을 눌러주십시오.</p>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col overflow-hidden">
             
-            {/* 채점 완료 시 총점 배너 */}
-            {step === 'RESULT' && resultData && (
-              <div className="mb-6 px-6 py-4 bg-white border border-blue-200 rounded-xl flex items-center justify-between shadow-sm">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">채점 완료</h2>
-                  <p className="text-sm text-slate-500 mt-1">작성된 답안에 대한 AI 피드백이 하단에 생성되었습니다.</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-bold text-slate-500 mr-2">총점:</span>
-                  <span className="text-3xl font-extrabold text-blue-600">{resultData.obtainedScore}</span>
-                  <span className="text-lg font-bold text-slate-400"> / {resultData.totalScore} 점</span>
-                </div>
-              </div>
-            )}
+            <div className="flex-1 overflow-hidden relative">
+              <div 
+                className="w-full h-full flex transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${currentPage * 100}%)` }}
+              >
+                {pagesArray.map((pageProblems, pageIndex) => (
+                  <div 
+                    key={pageIndex} 
+                    className="w-full h-full flex-shrink-0 px-2 flex flex-col"
+                  >
+                    <div className={`flex-1 overflow-y-auto ${customScrollbar}`}>
+                      <div className="grid grid-cols-2 gap-8 h-full">
+                        {pageProblems.map((problem, idx) => {
+                          const actualProblemNumber = pageIndex * problemsPerPage + idx + 1;
+                          const isGraded = showResultForProblem[problem.problemId];
+                          const isLoadingThis = gradingLoading[problem.problemId];
 
-            {/* 로딩 뷰 오버레이 (채점 중 화면 차단) */}
-            {isLoading && step === 'SOLVING' && (
-              <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
-                <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                <p className="text-lg font-bold text-slate-800">AI 채점 진행 중...</p>
-                <p className="text-sm text-slate-500 mt-2">시간이 다소 소요될 수 있습니다. (최대 5분)</p>
-              </div>
-            )}
+                          return (
+                            <div key={problem.problemId} className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 flex flex-col h-fit">
+                              
+                              <div className="mb-6 flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                  <h3 className="text-xl font-bold text-slate-800 tracking-tight">{actualProblemNumber}번 문제</h3>
+                                  
+                                  {isGraded && (
+                                    <span className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wide border ${
+                                      problem.isCorrect 
+                                        ? 'bg-green-50 text-green-700 border-green-200' 
+                                        : 'bg-red-50 text-red-700 border-red-200'
+                                    }`}>
+                                      {problem.isCorrect ? '정답' : '오답'}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {/* 단일 문제 AI 채점 요청 버튼 */}
+                                {!isGraded && (
+                                  <button 
+                                    onClick={() => handleGradeProblem(problem.problemId)}
+                                    disabled={isLoadingThis}
+                                    className="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 font-bold rounded-lg text-sm transition-colors cursor-pointer disabled:opacity-50"
+                                  >
+                                    {isLoadingThis ? '채점 중...' : '채점'}
+                                  </button>
+                                )}
+                              </div>
+                              
+                              <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed flex-1 select-text">
+                                {problem.content || problem.title}
+                              </div>
 
-            <div className="flex-1 grid grid-cols-2 gap-8 relative z-0">
-              {currentProblems.map((problem, index) => {
-                const actualProblemNumber = currentPage * problemsPerPage + index + 1;
-                // 옵셔널 체이닝으로 undefined 에러 방지
-                const resultInfo = step === 'RESULT' && resultData?.results 
-                  ? resultData.results.find(r => r.problemId === problem.problemId) 
-                  : null;
+                              <div className="mt-8 border-t border-slate-100 pt-6 select-text">
+                                <label className="block text-base font-bold text-slate-800 mb-3">내 답안</label>
+                                <textarea
+                                  value={userAnswers[problem.problemId] || ''}
+                                  onChange={(e) => handleAnswerChange(problem.problemId, e.target.value)}
+                                  className={`w-full h-32 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm transition-all shadow-inner ${customScrollbar} ${
+                                    isGraded
+                                      ? 'bg-slate-50 border-slate-200 text-slate-600 opacity-90 cursor-not-allowed' 
+                                      : 'bg-[#F8FAFC] border-slate-200 focus:bg-white text-slate-800'
+                                  }`}
+                                  placeholder="답안을 서술하십시오."
+                                  disabled={isGraded}
+                                />
+                              </div>
 
-                return (
-                  <div key={problem.problemId} className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 flex flex-col">
-                    
-                    <div className="mb-6 flex justify-between items-center">
-                      <h3 className="text-xl font-bold text-slate-800 tracking-tight">{actualProblemNumber}번 문제</h3>
-                      {step === 'RESULT' && resultInfo && (
-                        <span className={`px-4 py-1.5 rounded-full text-sm font-bold tracking-wide ${
-                          resultInfo.isCorrect 
-                            ? 'bg-green-50 text-green-700 border border-green-200' 
-                            : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}>
-                          {resultInfo.isCorrect ? '정답' : '오답'} ({resultInfo.score ?? 0}점)
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed flex-1">
-                      {problem.content || problem.title}
-                    </div>
+                              {/* 채점 완료 후 보여지는 AI 피드백 및 모범 답안 */}
+                              {isGraded && (
+                                <div className="mt-4 flex flex-col gap-3 select-text">
+                                  {problem.referenceAnswer && (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        <label className="text-xs font-bold text-slate-700">모범 답안</label>
+                                      </div>
+                                      <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                                        {problem.referenceAnswer}
+                                      </p>
+                                    </div>
+                                  )}
 
-                    <div className="mt-8 border-t border-slate-100 pt-6">
-                      <label className="block text-base font-bold text-slate-800 mb-3">내 답안</label>
-                      <textarea
-                        value={userAnswers[problem.problemId] || ''}
-                        onChange={(e) => handleAnswerChange(problem.problemId, e.target.value)}
-                        disabled={step === 'RESULT' || isLoading}
-                        className={`w-full h-32 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm transition-all shadow-inner ${
-                          step === 'RESULT' || isLoading
-                            ? 'bg-slate-50 border-slate-200 text-slate-600 opacity-90 cursor-not-allowed' 
-                            : 'bg-[#F8FAFC] border-slate-200 focus:bg-white text-slate-800'
-                        }`}
-                        placeholder="답안을 서술하십시오."
-                      />
-                    </div>
+                                  {problem.aiFeedback && (
+                                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        <label className="text-xs font-bold text-blue-900">AI 피드백</label>
+                                      </div>
+                                      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                        {typeof problem.aiFeedback === 'string' 
+                                          ? problem.aiFeedback 
+                                          : JSON.stringify(problem.aiFeedback, null, 2)}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
 
-                    {/* aiFeedback 객체 렌더링 에러 차단을 위한 방어적 출력 방식 적용 */}
-                    {step === 'RESULT' && resultInfo && resultInfo.aiFeedback && (
-                      <div className="mt-4 p-5 bg-blue-50/50 border border-blue-100 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                          <label className="text-sm font-bold text-blue-900">AI 피드백</label>
-                        </div>
-                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                          {typeof resultInfo.aiFeedback === 'string' 
-                            ? resultInfo.aiFeedback 
-                            : JSON.stringify(resultInfo.aiFeedback, null, 2)}
-                        </p>
+                            </div>
+                          );
+                        })}
                       </div>
-                    )}
-
+                    </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
 
-            <div className="mt-8 pt-4 flex items-center justify-center relative">
+            {/* 하단 페이지네이션 컨트롤 */}
+            <div className="mt-4 pt-4 flex items-center justify-center relative flex-shrink-0">
               <div className="flex gap-6">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                  disabled={currentPage === 0 || isLoading}
-                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md"
+                  onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+                  disabled={currentPage === 0}
+                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md cursor-pointer"
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={currentPage >= totalPages - 1 || isLoading}
-                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                  disabled={currentPage >= totalPages - 1}
+                  className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-md cursor-pointer"
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                 </button>
               </div>
-
-              {step === 'SOLVING' && (
-                <button
-                  onClick={handleSubmit}
-                  disabled={isLoading}
-                  className="absolute right-0 px-10 py-3 bg-blue-600 text-white rounded-lg font-extrabold text-base cursor-pointer hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-md tracking-wider"
-                >
-                  {isLoading ? '채점 중...' : '제 출'}
-                </button>
-              )}
             </div>
 
           </div>
